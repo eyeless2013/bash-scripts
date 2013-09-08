@@ -1,0 +1,43 @@
+#!/bin/bash
+
+IPT="/sbin/iptables"
+IPSET="/usr/sbin/ipset"
+
+$IPT -F
+$IPT -X
+$IPT -Z
+$IPT -t nat -F
+
+$IPT -P INPUT DROP
+$IPT -P FORWARD DROP
+$IPT -P OUTPUT DROP
+
+$IPSET -N ddos iphash
+$IPT -A INPUT -p tcp -m set --dport 80 --set ddos src -j DROP
+
+echo "Apply IPTABLES rules for this host"
+echo "Open ports - 20,21,22,80,443,3306"
+
+tcp_ports="22,80,443,3306"
+
+#Allow ICMP
+
+$IPT -A INPUT -p icmp -j ACCEPT
+$IPT -A OUTPUT -p icmp -j ACCEPT
+
+# Drop if new tcp session start without SYN flag
+$IPT -A INPUT -m conntrack --ctstate NEW -p tcp ! --syn -j DROP
+$IPT -A INPUT -p tcp --dport 80 -m conntrack --ctstate NEW -m limit --limit 2/sec --limit-burst 2 -j ACCEPT
+$IPT -A INPUT -p tcp --dport 80 -m connlimit --connlimit-above 5 -j DROP
+
+# Check TCP state
+$IPT -A INPUT -m conntrack --ctstate ESTABLISHED,RELATED -j ACCEPT
+$IPT -A OUTPUT -m conntrack --ctstate NEW,ESTABLISHED,RELATED -j ACCEPT
+
+#$IPT -A INPUT -p tcp --dport 80 -m conntrack --ctstate NEW -m limit --limit 2/sec --limit-burst 2 -j ACCEPT
+
+# Allow ports
+$IPT -A INPUT -p tcp -m multiport --dport $tcp_ports -j ACCEPT
+#$IPT -A OUTPUT -p tcp -m multiport --dport $tcp_ports -j ACCEPT
+
+#$IPT -A INPUT -p tcp -m set --dport 80 --set ddos src -j DROP
